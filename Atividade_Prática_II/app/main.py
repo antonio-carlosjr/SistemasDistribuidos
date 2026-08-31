@@ -5,6 +5,7 @@ cada oficina, e um pequeno conjunto de rotas operacionais que existem para
 tornar reproduziveis os experimentos da secao 4.8 da apostila.
 """
 
+import secrets
 import time
 import uuid
 from typing import Optional
@@ -14,8 +15,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from . import config, observabilidade
-from .erros import ErroDominio, PrecondicaoFalhou
+from .erros import EmManutencao, ErroDominio, NaoAutorizado, PrecondicaoFalhou
 from .modelos import (
+    AlternarManutencao,
     Inscricao,
     InscricaoEntrada,
     InscricaoPatch,
@@ -55,6 +57,20 @@ async def correlacionar_e_registrar(request: Request, chamar_proxima):
     request.state.request_id = request_id
 
     inicio = time.perf_counter()
+
+    if EstadoOperacional.em_manutencao and request.url.path not in CAMINHOS_LIVRES:
+        duracao_ms = (time.perf_counter() - inicio) * 1000
+        observabilidade.registrar_requisicao(
+            request_id, request.method, request.url.path, 503, duracao_ms
+        )
+        return JSONResponse(
+            status_code=503,
+            content=_corpo_erro(
+                "em_manutencao", "Servico em manutencao programada", request_id
+            ),
+            headers={"Retry-After": "5", "X-Request-Id": request_id},
+        )
+
     try:
         resposta = await chamar_proxima(request)
     except Exception as excecao:
@@ -376,3 +392,87 @@ def cancelar_inscricao(inscricao_id: int):
     """
     repositorio.cancelar_inscricao(inscricao_id)
     return Response(status_code=204)
+
+
+# ----------------------------------------------------------------------
+# Rotas operacionais
+#
+# Existem para tornar reproduziveis os experimentos da secao 4.8: comparar 503
+# com falha de conectividade, e exercitar timeouts do cliente. Ficam separadas
+# das rotas de dominio porque nao modelam recursos do negocio.
+# ----------------------------------------------------------------------
+
+
+class EstadoOperacional:
+    """Chave de manutencao do servico.
+
+    Um sinalizador em memoria basta: o proposito e simular indisponibilidade
+    durante a demonstracao, e nao sobreviver a reinicios.
+    """
+
+    em_manutencao = False
+
+
+#: Caminhos que continuam respondendo durante a manutencao. Sem esta excecao o
+#: proprio endpoint que desliga o modo ficaria inacessivel, e a sonda de saude
+#: nao teria como informar por que o servico esta fora.
+CAMINHOS_LIVRES = {"/saude", "/admin/manutencao", "/docs", "/openapi.json", "/redoc"}
+
+
+@app.get("/saude", tags=["operacional"])
+def saude(resposta: Response):
+    """Sonda de saude.
+
+    Responde 503 em manutencao e 200 caso contrario. Serve de contraponto ao
+    experimento de servidor desligado: aqui existe resposta, com status e
+    `Retry-After`; la nao existe resposta alguma.
+    """
+    if EstadoOperacional.em_manutencao:
+        raise EmManutencao("Servico em manutencao programada")
+    resposta.headers["Cache-Control"] = "no-store"
+    return {"status": "ok"}
+
+
+@app.post("/admin/manutencao", tags=["operacional"])
+def alternar_manutencao(
+    corpo: AlternarManutencao,
+    x_token_admin: Optional[str] = Header(default=None, alias="X-Token-Admin"),
+):
+    """Liga ou desliga o modo de manutencao.
+
+    Protegido por token simples. A comparacao usa `compare_digest` para nao
+    vazar informacao pelo tempo de execucao -- uma comparacao comum encerra no
+    primeiro byte diferente, o que permite deduzir o segredo caractere a
+    caractere. O token nunca aparece no log, conforme a secao 4.12.
+
+    Autenticacao nao contradiz o principio stateless: o token acompanha cada
+    requisicao, e nao ha sessao de conversacao guardada no servidor.
+    """
+    if x_token_admin is None or not secrets.compare_digest(
+        x_token_admin, config.TOKEN_ADMIN
+    ):
+        raise NaoAutorizado("Token administrativo ausente ou invalido")
+
+    EstadoOperacional.em_manutencao = corpo.ativo
+    observabilidade.registrar(
+        {"evento": "manutencao_alterada", "ativo": corpo.ativo}
+    )
+    return {"em_manutencao": EstadoOperacional.em_manutencao}
+
+
+@app.get("/debug/lento", tags=["operacional"])
+def resposta_lenta(
+    segundos: float = Query(default=2.0, ge=0, le=config.ATRASO_MAXIMO_S),
+):
+    """Atrasa a resposta deliberadamente.
+
+    Sustenta o experimento de timeout: com um atraso de 2 s, um cliente que use
+    `timeout=0.5` ou `timeout=1` desiste antes da resposta chegar, enquanto
+    `timeout=3` completa. O teto em `segundos` evita que um cliente mantenha a
+    conexao aberta indefinidamente.
+
+    A funcao e sincrona de proposito: o FastAPI a executa num pool de threads,
+    entao a espera nao bloqueia as demais requisicoes.
+    """
+    time.sleep(segundos)
+    return {"dormiu_s": segundos}

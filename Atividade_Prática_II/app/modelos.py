@@ -140,3 +140,11 @@ class DetalheErro(BaseModel):
 
 class RespostaErro(BaseModel):
     erro: DetalheErro
+
+
+class AlternarManutencao(BaseModel):
+    """Corpo do endpoint que liga e desliga o modo de manutencao."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ativo: bool
