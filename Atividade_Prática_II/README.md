@@ -207,6 +207,16 @@ python cliente_concorrente.py
 Doze clientes disputam uma única vaga e dois clientes editam a mesma oficina a
 partir da mesma leitura. A saída registrada está em `evidencias/concorrencia.txt`.
 
+### Demonstração passo a passo
+
+`docs/demonstracao.md` traz o roteiro cronometrado da apresentação, com a
+captura de tela de cada passo. Os cenários de HTTP ficam em `demo/`, um script
+por conceito — cada um imprime o comando antes de executá-lo:
+
+```bash
+.\demo-precondicao.ps1
+```
+
 ---
 
 ## Estrutura
@@ -223,10 +233,13 @@ tests/                suíte pytest: contrato e invariantes
 docs/
   modelagem.md        recursos e relações, escrito antes do código
   analise.md          respostas às questões da atividade
+  demonstracao.md     roteiro da apresentação, com capturas de cada passo
+demo/                 scripts curl da demonstração, um por cenário
 evidencias/
   tabela.md           cenário, requisição, status esperado e obtido
   concorrencia.txt    saída dos experimentos concorrentes
   servidor.log        uma linha JSON por requisição
+  capturas/           capturas de tela de cada passo da demonstração
 seed.py               dados de demonstração
 cliente_testes.py     cliente programático que gera a tabela
 cliente_concorrente.py experimentos de concorrência
