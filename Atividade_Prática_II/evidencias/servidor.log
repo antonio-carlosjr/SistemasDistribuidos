@@ -70,3 +70,5 @@
 {"ts": "2026-08-31T23:15:38.705686+00:00", "request_id": "6def57440bc8", "metodo": "GET", "caminho": "/oficinas/11", "status": 200, "duracao_ms": 0.85}
 {"ts": "2026-08-31T23:15:38.708911+00:00", "request_id": "5b2fd5fd7064", "metodo": "GET", "caminho": "/oficinas/11", "status": 200, "duracao_ms": 1.51}
 {"ts": "2026-08-31T23:15:38.712065+00:00", "request_id": "3ef84de655a8", "metodo": "PATCH", "caminho": "/oficinas/11", "status": 200, "duracao_ms": 1.66}
+{"ts": "2026-08-31T23:21:10.856094+00:00", "request_id": "101804858ae8", "metodo": "GET", "caminho": "/saude", "status": 200, "duracao_ms": 1.4}
+{"ts": "2026-08-31T23:21:10.875115+00:00", "request_id": "dad69e09b8e4", "metodo": "GET", "caminho": "/docs", "status": 200, "duracao_ms": 0.29}

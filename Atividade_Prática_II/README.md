@@ -50,6 +50,15 @@ Suba a API:
 fastapi dev app/main.py
 ```
 
+Se o comando acima falhar com `UnicodeEncodeError`, o problema é o banner
+colorido da CLI do FastAPI, que não consegue ser escrito no console do Windows
+em cp1252 — a aplicação em si não é afetada. Use a alternativa clássica, que
+também é a citada pela apostila:
+
+```bash
+python -m uvicorn app.main:app --reload
+```
+
 A documentação interativa fica em <http://127.0.0.1:8000/docs>. Ela é útil para
 exploração, mas os testes abaixo usam linha de comando e cliente programático
 para deixar a mensagem HTTP explícita.
