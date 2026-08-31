@@ -7,13 +7,22 @@ tornar reproduziveis os experimentos da secao 4.8 da apostila.
 
 import time
 import uuid
+from typing import Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Header, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from . import observabilidade
-from .erros import ErroDominio
+from . import config, observabilidade
+from .erros import ErroDominio, PrecondicaoFalhou
+from .modelos import (
+    Oficina,
+    OficinaEntrada,
+    OficinaPatch,
+    PaginaOficinas,
+    StatusOficina,
+)
+from .repositorio import QUALQUER_VERSAO, repositorio
 
 app = FastAPI(
     title="API de Inscricoes em Oficinas",
@@ -109,3 +118,169 @@ async def tratar_erro_validacao(request: Request, excecao: RequestValidationErro
     corpo = _corpo_erro("entrada_invalida", "Representacao invalida", request_id)
     corpo["erro"]["problemas"] = problemas
     return JSONResponse(status_code=422, content=corpo)
+
+
+# ----------------------------------------------------------------------
+# Validacao condicional: ETag, If-Match e If-None-Match
+# ----------------------------------------------------------------------
+
+
+def etag_de(oficina: Oficina) -> str:
+    """Deriva o ETag da versao do recurso.
+
+    Um contador de versao serve melhor que o hash da representacao: ele muda a
+    cada escrita mesmo quando a escrita repoe os mesmos valores, o que preserva
+    a nocao de "houve alteracao concorrente" que o controle otimista precisa.
+    """
+    return f'"{oficina.versao}"'
+
+
+def versao_do_if_match(if_match: Optional[str]) -> Optional[int]:
+    """Converte o cabecalho `If-Match` na versao que o cliente supoe vigente.
+
+    Retorna `None` quando o cabecalho esta ausente, o que a camada de dominio
+    trata como 428. Um valor ilegivel vira `PrecondicaoFalhou` (412), e nao 400:
+    o cabecalho foi enviado e simplesmente nao corresponde a nenhuma versao
+    existente, que e exatamente o que 412 comunica.
+    """
+    if if_match is None:
+        return None
+
+    valor = if_match.strip()
+    if valor == "*":
+        return QUALQUER_VERSAO
+
+    # Aceita a forma fraca (W/"3") por tolerancia, ainda que a API so emita
+    # validadores fortes.
+    if valor.startswith("W/"):
+        valor = valor[2:]
+    valor = valor.strip('"')
+
+    try:
+        return int(valor)
+    except ValueError:
+        raise PrecondicaoFalhou(f"ETag {if_match!r} nao corresponde a nenhuma versao")
+
+
+# ----------------------------------------------------------------------
+# Oficinas
+# ----------------------------------------------------------------------
+
+
+@app.get("/oficinas", response_model=PaginaOficinas, tags=["oficinas"])
+def listar_oficinas(
+    status_oficina: Optional[StatusOficina] = Query(default=None, alias="status"),
+    limite: int = Query(default=config.LIMITE_PADRAO, ge=1, le=config.LIMITE_MAXIMO),
+    offset: int = Query(default=0, ge=0),
+):
+    """Lista oficinas com paginacao obrigatoria.
+
+    O teto em `limite` e deliberado: a secao 4.10 aponta listagens sem limite
+    como erro comum, porque o custo da resposta cresce junto com a colecao ate
+    consumir memoria e banda de forma imprevisivel.
+    """
+    total, itens = repositorio.listar_oficinas(status_oficina, limite, offset)
+    return PaginaOficinas(total=total, limite=limite, offset=offset, itens=itens)
+
+
+@app.post("/oficinas", response_model=Oficina, status_code=201, tags=["oficinas"])
+def criar_oficina(entrada: OficinaEntrada, resposta: Response):
+    """Cria uma oficina.
+
+    Repetir esta requisicao cria um segundo recurso, distinto do primeiro: POST
+    nao e idempotente. O contraste com `POST /oficinas/{id}/inscricoes`, que
+    responde 409 na repeticao, esta discutido em `docs/analise.md`.
+    """
+    oficina = repositorio.criar_oficina(entrada)
+    resposta.headers["Location"] = f"/oficinas/{oficina.id}"
+    resposta.headers["ETag"] = etag_de(oficina)
+    return oficina
+
+
+@app.get("/oficinas/{oficina_id}", response_model=Oficina, tags=["oficinas"])
+def obter_oficina(
+    oficina_id: int,
+    resposta: Response,
+    if_none_match: Optional[str] = Header(default=None, alias="If-None-Match"),
+):
+    """Obtem uma oficina, com suporte a validacao condicional.
+
+    Quando o cliente informa `If-None-Match` com o ETag que ja possui e nada
+    mudou, a resposta e 304 sem corpo: economiza banda mantendo a garantia de
+    que o cliente nao esta usando dado obsoleto sem saber.
+    """
+    oficina = repositorio.obter_oficina(oficina_id)
+    etag = etag_de(oficina)
+
+    if if_none_match is not None and if_none_match.strip().strip('"') == str(
+        oficina.versao
+    ):
+        return Response(status_code=304, headers={"ETag": etag})
+
+    resposta.headers["ETag"] = etag
+    resposta.headers["Cache-Control"] = "no-cache"
+    return oficina
+
+
+@app.put("/oficinas/{oficina_id}", response_model=Oficina, tags=["oficinas"])
+def substituir_oficina(
+    oficina_id: int,
+    entrada: OficinaEntrada,
+    resposta: Response,
+    if_match: Optional[str] = Header(default=None, alias="If-Match"),
+):
+    """Substitui a representacao completa da oficina.
+
+    Exige `If-Match`. Sem a precondicao, dois clientes que leram a mesma versao
+    sobrescreveriam um ao outro sem que nenhum percebesse -- a perda de
+    atualizacao da secao 4.6. Com ela, o segundo recebe 412 e pode reler e
+    decidir o que fazer.
+
+    Repetir a mesma requisicao com o ETag ja consumido devolve 412, e nao um
+    segundo efeito. A idempotencia de PUT esta no estado final do recurso, nao
+    na igualdade das respostas.
+    """
+    oficina = repositorio.substituir_oficina(
+        oficina_id, entrada, versao_do_if_match(if_match)
+    )
+    resposta.headers["ETag"] = etag_de(oficina)
+    return oficina
+
+
+@app.patch("/oficinas/{oficina_id}", response_model=Oficina, tags=["oficinas"])
+def atualizar_oficina(
+    oficina_id: int,
+    patch: OficinaPatch,
+    resposta: Response,
+    if_match: Optional[str] = Header(default=None, alias="If-Match"),
+):
+    """Altera parcialmente a oficina.
+
+    Diferente do PUT, o corpo carrega apenas os campos a mudar, o que reduz o
+    acoplamento: o cliente nao precisa conhecer a representacao inteira nem
+    reenviar campos que nao lhe dizem respeito.
+    """
+    oficina = repositorio.atualizar_oficina(
+        oficina_id, patch, versao_do_if_match(if_match)
+    )
+    resposta.headers["ETag"] = etag_de(oficina)
+    return oficina
+
+
+@app.delete("/oficinas/{oficina_id}", status_code=204, tags=["oficinas"])
+def remover_oficina(
+    oficina_id: int,
+    if_match: Optional[str] = Header(default=None, alias="If-Match"),
+):
+    """Remove a oficina.
+
+    Recusa a remocao quando ha inscricoes ativas: apagar a oficina invalidaria
+    silenciosamente a inscricao de terceiros. O conflito e 409, nao 403 -- o
+    problema esta no estado do recurso, nao na autorizacao de quem pede.
+
+    Uma segunda chamada ao mesmo URI responde 404. O efeito e idempotente (o
+    recurso segue ausente); o status difere porque descreve o que aconteceu
+    naquela requisicao, e nao o estado final.
+    """
+    repositorio.remover_oficina(oficina_id, versao_do_if_match(if_match))
+    return Response(status_code=204)

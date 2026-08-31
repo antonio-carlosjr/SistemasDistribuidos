@@ -59,6 +59,11 @@ from .modelos import (
     StatusOficina,
 )
 
+#: Valor usado quando o cliente envia `If-Match: *`, que pela RFC 7232 significa
+#: "qualquer versao, desde que o recurso exista". Versoes reais comecam em 1,
+#: entao -1 nao colide com nenhuma delas.
+QUALQUER_VERSAO = -1
+
 ESTADO_VAZIO = {
     "proximo_id_oficina": 1,
     "proximo_id_inscricao": 1,
@@ -163,6 +168,8 @@ class Repositorio:
             raise PrecondicaoObrigatoria(
                 "Envie o cabecalho If-Match com o ETag obtido na leitura"
             )
+        if versao_esperada == QUALQUER_VERSAO:
+            return
         if versao_esperada != registro["versao"]:
             raise PrecondicaoFalhou(
                 f"O recurso esta na versao {registro['versao']}; "

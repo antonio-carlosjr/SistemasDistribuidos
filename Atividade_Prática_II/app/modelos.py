@@ -122,7 +122,14 @@ class Pagina(BaseModel):
     total: int
     limite: int
     offset: int
-    itens: list
+
+
+class PaginaOficinas(Pagina):
+    itens: list[Oficina]
+
+
+class PaginaInscricoes(Pagina):
+    itens: list[Inscricao]
 
 
 class DetalheErro(BaseModel):
