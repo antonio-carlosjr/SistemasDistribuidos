@@ -21,7 +21,7 @@ Uso:
 import argparse
 import json
 import sys
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional, Union
 
@@ -31,6 +31,11 @@ BASE = "http://127.0.0.1:8000"
 TIMEOUT_PADRAO = 3.0
 TOKEN_ADMIN = "token-de-laboratorio"
 SAIDA = Path(__file__).parent / "evidencias" / "tabela.md"
+#: Resultados acumulados entre execucoes. Permite que a rodada com o
+#: servidor no ar e a rodada offline componham uma unica tabela numerada de
+#: ponta a ponta, em vez de duas tabelas independentes.
+CACHE = Path(__file__).parent / "evidencias" / "resultados.json"
+GRUPO_OFFLINE = "Falha de conectividade"
 
 OFICINA_BASE = {
     "titulo": "Arquitetura de sistemas distribuidos",
@@ -516,7 +521,7 @@ def roteiro(executor: Executor) -> None:
 
 def roteiro_offline(executor: Executor) -> None:
     """Cenario de conectividade -- exige o servidor desligado."""
-    executor.secao("Falha de conectividade")
+    executor.secao(GRUPO_OFFLINE)
     executor.chamar(
         "Listar oficinas com o servidor desligado",
         "GET",
@@ -534,8 +539,22 @@ def roteiro_offline(executor: Executor) -> None:
     )
 
 
-def gerar_tabela(resultados: list, offline: bool) -> str:
+def carregar_cache() -> list:
+    if not CACHE.exists():
+        return []
+    return [Resultado(**dados) for dados in json.loads(CACHE.read_text("utf-8"))]
+
+
+def salvar_cache(resultados: list) -> None:
+    CACHE.write_text(
+        json.dumps([asdict(r) for r in resultados], ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def gerar_tabela(resultados: list) -> str:
     aprovados = sum(1 for r in resultados if r.ok)
+    tem_offline = any(r.grupo == GRUPO_OFFLINE for r in resultados)
     linhas = [
         "# Tabela de evidencias -- AP2",
         "",
@@ -545,10 +564,11 @@ def gerar_tabela(resultados: list, offline: bool) -> str:
         f"**{aprovados} de {len(resultados)} cenarios com resultado igual ao esperado.**",
         "",
     ]
-    if not offline:
+    if not tem_offline:
         linhas += [
-            "> O cenario de falha de conectividade nao esta nesta execucao. Para",
-            "> inclui-lo, desligue o servidor e rode `python cliente_testes.py --offline`.",
+            "> Os cenarios de falha de conectividade ainda nao foram coletados.",
+            "> Desligue o servidor e rode `python cliente_testes.py --offline`",
+            "> para acrescenta-los a esta tabela.",
             "",
         ]
 
@@ -594,15 +614,19 @@ def main() -> int:
     saida = Path(argumentos.saida)
     saida.parent.mkdir(parents=True, exist_ok=True)
 
-    if argumentos.offline and saida.exists():
-        # Anexa a tabela existente para que a evidencia de conectividade conviva
-        # com os cenarios que exigem o servidor no ar.
-        conteudo = saida.read_text(encoding="utf-8").rstrip() + "\n\n"
-        conteudo += gerar_tabela(executor.resultados, offline=True).split("\n", 6)[-1]
+    # Cada rodada substitui apenas os cenarios que ela mesma cobre, preservando
+    # os da outra. Assim as duas condicoes -- servidor no ar e servidor
+    # desligado -- convivem numa tabela unica e numerada continuamente.
+    anteriores = carregar_cache()
+    if argumentos.offline:
+        todos = [r for r in anteriores if r.grupo != GRUPO_OFFLINE]
+        todos += executor.resultados
     else:
-        conteudo = gerar_tabela(executor.resultados, offline=False)
+        todos = list(executor.resultados)
+        todos += [r for r in anteriores if r.grupo == GRUPO_OFFLINE]
 
-    saida.write_text(conteudo, encoding="utf-8")
+    salvar_cache(todos)
+    saida.write_text(gerar_tabela(todos), encoding="utf-8")
 
     falhas = [r for r in executor.resultados if not r.ok]
     print(f"\nTabela gravada em {saida}")

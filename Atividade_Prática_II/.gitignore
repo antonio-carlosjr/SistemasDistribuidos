@@ -3,3 +3,4 @@ dados/
 
 # Ambiente virtual local
 .venv/
+evidencias/resultados.json

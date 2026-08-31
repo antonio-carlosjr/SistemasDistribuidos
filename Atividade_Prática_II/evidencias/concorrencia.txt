@@ -1,0 +1,30 @@
+====================================================================
+Experimento 1 -- 12 clientes disputam 1 vaga
+====================================================================
+  201 Created  : 1
+  409 Conflict : 11
+  vagas_ocupadas no servidor: 1
+  vagas_totais              : 1
+
+  Resultado: invariante preservado
+  Exatamente um cliente conseguiu a vaga; os demais receberam um
+  conflito explicito em vez de uma inscricao que nao caberia.
+
+====================================================================
+Experimento 2 -- dois clientes editam a mesma oficina
+====================================================================
+  Cliente A leu a versao "1"
+  Cliente B leu a versao "1"
+
+  PATCH do cliente A -> 200
+  PATCH do cliente B -> 412 (precondicao_falhou)
+
+  instrutor no servidor: 'Alterado pelo cliente A'
+
+  Resultado: perda de atualizacao detectada
+  A alteracao de A sobreviveu. B foi informado de que sua leitura
+  ficou obsoleta e pode reler antes de decidir -- em vez de apagar
+  silenciosamente o trabalho de A.
+
+  B rele e tenta de novo -> 200
+
