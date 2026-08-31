@@ -1,0 +1,5 @@
+# Estado de execucao da API (gerado por seed.py / pelas requisicoes)
+dados/
+
+# Ambiente virtual local
+.venv/
