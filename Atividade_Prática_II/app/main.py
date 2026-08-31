@@ -16,9 +16,13 @@ from fastapi.responses import JSONResponse
 from . import config, observabilidade
 from .erros import ErroDominio, PrecondicaoFalhou
 from .modelos import (
+    Inscricao,
+    InscricaoEntrada,
+    InscricaoPatch,
     Oficina,
     OficinaEntrada,
     OficinaPatch,
+    PaginaInscricoes,
     PaginaOficinas,
     StatusOficina,
 )
@@ -283,4 +287,92 @@ def remover_oficina(
     naquela requisicao, e nao o estado final.
     """
     repositorio.remover_oficina(oficina_id, versao_do_if_match(if_match))
+    return Response(status_code=204)
+
+
+# ----------------------------------------------------------------------
+# Inscricoes
+#
+# Criacao e listagem sao aninhadas sob a oficina, porque a colecao so existe no
+# contexto do pai e a verificacao de capacidade precisa saber de qual oficina se
+# trata. As operacoes de item ficam em primeiro nivel: quem ja possui o
+# identificador da inscricao -- que o `Location` da criacao devolve -- nao
+# deveria precisar guardar tambem o identificador da oficina para cancela-la.
+# ----------------------------------------------------------------------
+
+
+@app.get(
+    "/oficinas/{oficina_id}/inscricoes",
+    response_model=PaginaInscricoes,
+    tags=["inscricoes"],
+)
+def listar_inscricoes(
+    oficina_id: int,
+    limite: int = Query(default=config.LIMITE_PADRAO, ge=1, le=config.LIMITE_MAXIMO),
+    offset: int = Query(default=0, ge=0),
+):
+    """Lista as inscricoes de uma oficina.
+
+    Responde 404 quando a oficina nao existe, em vez de uma lista vazia: sao
+    situacoes diferentes, e confundi-las esconde do cliente que ele esta
+    consultando um identificador errado.
+    """
+    total, itens = repositorio.listar_inscricoes(oficina_id, limite, offset)
+    return PaginaInscricoes(total=total, limite=limite, offset=offset, itens=itens)
+
+
+@app.post(
+    "/oficinas/{oficina_id}/inscricoes",
+    response_model=Inscricao,
+    status_code=201,
+    tags=["inscricoes"],
+)
+def criar_inscricao(oficina_id: int, entrada: InscricaoEntrada, resposta: Response):
+    """Inscreve um participante na oficina.
+
+    Concentra tres conflitos distintos, todos 409 porque dependem do estado
+    atual do recurso e nao da representacao enviada:
+
+    - `oficina_lotada`: as vagas acabaram;
+    - `inscricao_duplicada`: o mesmo e-mail ja tem inscricao ativa aqui;
+    - `oficina_nao_aberta`: a oficina nao esta recebendo inscricoes.
+
+    A repeticao desta requisicao devolve 409, enquanto repetir `POST /oficinas`
+    cria um segundo recurso. Ambos sao POST e nenhum e idempotente; a diferenca
+    e que aqui existe um invariante de unicidade que o servidor protege.
+    """
+    inscricao = repositorio.criar_inscricao(oficina_id, entrada)
+    resposta.headers["Location"] = f"/inscricoes/{inscricao.id}"
+    return inscricao
+
+
+@app.get("/inscricoes/{inscricao_id}", response_model=Inscricao, tags=["inscricoes"])
+def obter_inscricao(inscricao_id: int):
+    return repositorio.obter_inscricao(inscricao_id)
+
+
+@app.patch("/inscricoes/{inscricao_id}", response_model=Inscricao, tags=["inscricoes"])
+def atualizar_inscricao(inscricao_id: int, patch: InscricaoPatch):
+    """Altera o status da inscricao, respeitando o ciclo de vida.
+
+    Transicoes invalidas -- reativar uma inscricao cancelada, por exemplo --
+    resultam em 409. A restricao nao e formal: reativar sem passar de novo pela
+    verificacao de capacidade permitiria ultrapassar o limite de vagas.
+    """
+    return repositorio.atualizar_inscricao(inscricao_id, patch.status)
+
+
+@app.delete("/inscricoes/{inscricao_id}", status_code=204, tags=["inscricoes"])
+def cancelar_inscricao(inscricao_id: int):
+    """Cancela a inscricao e libera a vaga.
+
+    O registro permanece com status `cancelada` em vez de ser apagado: o
+    historico de desistencias tem valor, e a vaga volta a ficar disponivel
+    porque a contagem de ocupacao so considera os status ativos.
+
+    Repetir a chamada mantem o mesmo estado final -- a inscricao segue cancelada
+    -- e responde 204 novamente. E o caso mais limpo de idempotencia de efeito
+    da API.
+    """
+    repositorio.cancelar_inscricao(inscricao_id)
     return Response(status_code=204)
