@@ -5,6 +5,7 @@ servidor. Os valores da coluna *obtido* nao sao transcritos a mao.
 
 **48 de 48 cenarios com resultado igual ao esperado.**
 
+
 ## Sucesso
 
 | # | Cenario | Requisicao | Esperado | Obtido | Codigo | Resultado |
@@ -17,6 +18,7 @@ servidor. Os valores da coluna *obtido* nao sao transcritos a mao.
 | 4 | Listar oficinas | `GET /oficinas` | 200 | 200 | - | OK |
 | 5 | Obter oficina | `GET /oficinas/6` | 200 | 200 | - | OK |
 | 6 | Listar inscricoes da oficina | `GET /oficinas/6/inscricoes` | 200 | 200 | - | OK |
+
 ## Validacao de entrada (422)
 
 | # | Cenario | Requisicao | Esperado | Obtido | Codigo | Resultado |
@@ -27,6 +29,7 @@ servidor. Os valores da coluna *obtido* nao sao transcritos a mao.
 | 9 | Inscrever com e-mail malformado | `POST /oficinas/6/inscricoes` | 422 | 422 | entrada_invalida | OK |
 | 10 | Listar com limite acima do teto | `GET /oficinas?limite=1000` | 422 | 422 | entrada_invalida | OK |
 | | _Paginacao tem teto para a resposta nao crescer sem limite_ | | | | | |
+
 ## Recurso inexistente (404)
 
 | # | Cenario | Requisicao | Esperado | Obtido | Codigo | Resultado |
@@ -35,6 +38,7 @@ servidor. Os valores da coluna *obtido* nao sao transcritos a mao.
 | 12 | Listar inscricoes de oficina inexistente | `GET /oficinas/9999/inscricoes` | 404 | 404 | nao_encontrado | OK |
 | | _404, e nao lista vazia: sao situacoes distintas_ | | | | | |
 | 13 | Obter inscricao inexistente | `GET /inscricoes/9999` | 404 | 404 | nao_encontrado | OK |
+
 ## Concorrencia e cache (304/412/428)
 
 | # | Cenario | Requisicao | Esperado | Obtido | Codigo | Resultado |
@@ -50,6 +54,7 @@ servidor. Os valores da coluna *obtido* nao sao transcritos a mao.
 | | _Perda de atualizacao detectada em vez de sobrescrita silenciosa_ | | | | | |
 | 19 | Reler para obter o ETag vigente | `GET /oficinas/6` | 200 | 200 | - | OK |
 | 20 | Substituir com If-Match vigente | `PUT /oficinas/6` | 200 | 200 | - | OK |
+
 ## Conflitos de dominio (409)
 
 | # | Cenario | Requisicao | Esperado | Obtido | Codigo | Resultado |
@@ -69,6 +74,7 @@ servidor. Os valores da coluna *obtido* nao sao transcritos a mao.
 | 29 | Inscrever com a oficina lotada | `POST /oficinas/8/inscricoes` | 409 | 409 | oficina_lotada | OK |
 | 30 | Criar oficina em rascunho | `POST /oficinas` | 201 | 201 | - | OK |
 | 31 | Inscrever em oficina nao aberta | `POST /oficinas/9/inscricoes` | 409 | 409 | oficina_nao_aberta | OK |
+
 ## Idempotencia
 
 | # | Cenario | Requisicao | Esperado | Obtido | Codigo | Resultado |
@@ -85,6 +91,7 @@ servidor. Os valores da coluna *obtido* nao sao transcritos a mao.
 | 38 | Remover oficina sem inscritos | `DELETE /oficinas/6` | 204 | 204 | - | OK |
 | 39 | Remover a mesma oficina de novo | `DELETE /oficinas/6` | 404 | 404 | nao_encontrado | OK |
 | | _Efeito identico, status diferente: 404 relata esta requisicao_ | | | | | |
+
 ## Timeout do cliente
 
 | # | Cenario | Requisicao | Esperado | Obtido | Codigo | Resultado |
@@ -92,6 +99,7 @@ servidor. Os valores da coluna *obtido* nao sao transcritos a mao.
 | 40 | Rota de 2s com timeout de 0.5s | `GET /debug/lento?segundos=2 (timeout 0.5s)` | Timeout | Timeout | - | OK |
 | 41 | Rota de 2s com timeout de 1.0s | `GET /debug/lento?segundos=2 (timeout 1.0s)` | Timeout | Timeout | - | OK |
 | 42 | Rota de 2s com timeout de 3.0s | `GET /debug/lento?segundos=2` | 200 | 200 | - | OK |
+
 ## Indisponibilidade (503)
 
 | # | Cenario | Requisicao | Esperado | Obtido | Codigo | Resultado |
@@ -101,6 +109,7 @@ servidor. Os valores da coluna *obtido* nao sao transcritos a mao.
 | 45 | Listar oficinas em manutencao | `GET /oficinas` | 503 | 503 | em_manutencao | OK |
 | | _Ha resposta: status e Retry-After informam o cliente_ | | | | | |
 | 46 | Desativar manutencao | `POST /admin/manutencao` | 200 | 200 | - | OK |
+
 ## Falha de conectividade
 
 | # | Cenario | Requisicao | Esperado | Obtido | Codigo | Resultado |

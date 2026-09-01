@@ -577,6 +577,10 @@ def gerar_tabela(resultados: list) -> str:
         if resultado.grupo != grupo_atual:
             grupo_atual = resultado.grupo
             linhas += [
+                # A linha em branco separa o titulo da tabela anterior. Sem ela,
+                # o Markdown trata o cabecalho como mais uma linha daquela
+                # tabela em vez de iniciar uma secao.
+                "",
                 f"## {grupo_atual}",
                 "",
                 "| # | Cenario | Requisicao | Esperado | Obtido | Codigo | Resultado |",
