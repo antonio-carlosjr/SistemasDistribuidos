@@ -1,3 +1,6 @@
 fastapi[standard]>=0.115
 requests>=2.31
 pytest>=8.0
+
+# Somente para gerar o documento unico de entrega (gerar_entrega.py)
+markdown>=3.5

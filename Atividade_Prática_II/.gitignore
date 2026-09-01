@@ -4,3 +4,6 @@ dados/
 # Ambiente virtual local
 .venv/
 evidencias/resultados.json
+
+# HTML intermediario da entrega (regeravel; o PDF e o entregavel)
+entrega/*.html

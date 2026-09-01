@@ -207,6 +207,18 @@ python cliente_concorrente.py
 Doze clientes disputam uma única vaga e dois clientes editam a mesma oficina a
 partir da mesma leitura. A saída registrada está em `evidencias/concorrencia.txt`.
 
+### Documento único de entrega
+
+Compõe capa, sumário e todas as seções num só PDF, a partir dos arquivos
+versionados — assim a entrega nunca diverge do repositório:
+
+```bash
+python gerar_entrega.py
+```
+
+Resultado em `entrega/AP2-entrega.pdf`. A conversão usa o Chrome ou o Edge em
+modo headless.
+
 ### Demonstração passo a passo
 
 `docs/demonstracao.md` traz o roteiro cronometrado da apresentação, com a
@@ -214,7 +226,7 @@ captura de tela de cada passo. Os cenários de HTTP ficam em `demo/`, um script
 por conceito — cada um imprime o comando antes de executá-lo:
 
 ```bash
-.\demo-precondicao.ps1
+.\demo\04-precondicao.ps1
 ```
 
 ---
